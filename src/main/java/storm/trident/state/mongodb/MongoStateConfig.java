@@ -12,6 +12,7 @@ public class MongoStateConfig implements Serializable {
 	private String collection;
 	private StateType type = StateType.OPAQUE;
 	private String[] keyFields;
+	private String[] valueFields;
 	private boolean bulkGets;
 	private int cacheSize = DEFAULT;
 
@@ -71,6 +72,14 @@ public class MongoStateConfig implements Serializable {
 
 	public void setCacheSize(int cacheSize) {
 		this.cacheSize = cacheSize;
+	}
+
+	public String[] getValueFields() {
+		return valueFields;
+	}
+
+	public void setValueFields(String[] valueFields) {
+		this.valueFields = valueFields;
 	}
 
 }

@@ -1,20 +1,28 @@
 package storm.trident.mongodb;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.apache.log4j.Logger;
+
 import storm.trident.TridentTopology;
+import storm.trident.operation.BaseFilter;
+import storm.trident.operation.CombinerAggregator;
 import storm.trident.operation.TridentCollector;
-import storm.trident.operation.builtin.Sum;
 import storm.trident.spout.IBatchSpout;
 import storm.trident.state.StateType;
 import storm.trident.state.mongodb.MongoState;
 import storm.trident.state.mongodb.MongoStateConfig;
+import storm.trident.tuple.TridentTuple;
 import backtype.storm.Config;
 import backtype.storm.LocalCluster;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Values;
+import clojure.lang.Numbers;
+
+import com.google.common.collect.Lists;
 
 public class MongoStateTopology {
 
@@ -38,12 +46,10 @@ public class MongoStateTopology {
 		}
 
 		@Override
-		public void ack(final long batchId) {
-		}
+		public void ack(final long batchId) {}
 
 		@Override
-		public void close() {
-		}
+		public void close() {}
 
 		@Override
 		@SuppressWarnings("rawtypes")
@@ -55,6 +61,37 @@ public class MongoStateTopology {
 		public Fields getOutputFields() {
 			return new Fields("a", "b", "c");
 		}
+	}
+
+	@SuppressWarnings("serial")
+	static class LoggingFilter extends BaseFilter {
+
+		private static final Logger logger = Logger.getLogger(LoggingFilter.class);
+
+		public boolean isKeep(final TridentTuple tuple) {
+			logger.info(tuple);
+			return true;
+		}
+	}
+
+	@SuppressWarnings("serial")
+	static class CountSumSum implements CombinerAggregator<List<Number>> {
+
+		@Override
+		public List<Number> init(TridentTuple tuple) {
+			return Lists.newArrayList(1L, (Number) tuple.getValue(0), (Number) tuple.getValue(1));
+		}
+
+		@Override
+		public List<Number> combine(List<Number> val1, List<Number> val2) {
+			return Lists.newArrayList(Numbers.add(val1.get(0), val2.get(0)), Numbers.add(val1.get(1), val2.get(1)), Numbers.add(val1.get(2), val2.get(2)));
+		}
+
+		@Override
+		public List<Number> zero() {
+			return Lists.newArrayList((Number) 0, (Number) 0, (Number) 0);
+		}
+
 	}
 
 	/**
@@ -69,17 +106,21 @@ public class MongoStateTopology {
 			config.setDb("test");
 			config.setCollection("state");
 			config.setBulkGets(true);
-			config.setKeyFields(new String[] { "a" });
+			config.setKeyFields(new String[]{"a"});
+			config.setValueFields(new String[]{"count","sumb","sumc"});
 			config.setType(StateType.NON_TRANSACTIONAL);
 			config.setCacheSize(1000);
+
 		}
 		final TridentTopology topology = new TridentTopology();
 		topology.newStream("test", new RandomTupleSpout()).groupBy(new Fields("a"))
-				.persistentAggregate(MongoState.newFactory(config), new Fields("b"), new Sum(), new Fields("bsum"));
+			// .aggregate(new Fields("b", "c"), new CountSumSum(), new Fields("sum"))
+			// .each(new Fields("a", "sum"), new LoggingFilter());
+			.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), new CountSumSum(), new Fields("sum"));
 		final LocalCluster cluster = new LocalCluster();
 		cluster.submitTopology("test", new Config(), topology.build());
 		while (true) {
-			
+
 		}
 	}
 }

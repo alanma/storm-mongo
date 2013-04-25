@@ -1,6 +1,8 @@
 package storm.trident.state.mongodb;
 
 import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,7 +60,7 @@ public class MongoState<T> implements IBackingMap<T> {
 	 * 
 	 */
 	@Override
-	@SuppressWarnings({ "unchecked", "rawtypes" })
+	@SuppressWarnings({"unchecked","rawtypes"})
 	public List<T> multiGet(final List<List<Object>> keys) {
 		// convert all keys into mongodb id docs
 		final List<DBObject> ids = keysToIds(keys);
@@ -85,11 +87,14 @@ public class MongoState<T> implements IBackingMap<T> {
 				} else {
 					switch (config.getType()) {
 					case OPAQUE:
-						return (T) new OpaqueValue((Long) doc.get("txid"), doc.get("val"), doc.get("prev"));
+						return (T) new OpaqueValue((Long) doc.get("txid"),
+							documentToValue((DBObject) doc.get("val"), Arrays.asList(config.getValueFields())),
+							documentToValue((DBObject) doc.get("prev"), Arrays.asList(config.getValueFields())));
 					case TRANSACTIONAL:
-						return (T) new TransactionalValue((Long) doc.get("txid"), doc.get("val"));
+						return (T) new TransactionalValue((Long) doc.get("txid"), documentToValue((DBObject) doc.get("val"),
+							Arrays.asList(config.getValueFields())));
 					default:
-						return (T) doc.get("val");
+						return (T) documentToValue((DBObject) doc.get("val"), Arrays.asList(config.getValueFields()));
 					}
 				}
 			}
@@ -108,6 +113,7 @@ public class MongoState<T> implements IBackingMap<T> {
 			// perform an upsert
 			collection.update(new BasicDBObject("_id", ids.get(i)), tuplesToDocument(ids.get(i), values.get(i)), true, false);
 		}
+		logger.info(String.format("%1$d keys flushed", keys.size()));
 	}
 
 	/**
@@ -173,16 +179,62 @@ public class MongoState<T> implements IBackingMap<T> {
 		final BasicDBObject doc = new BasicDBObject("_id", id);
 		switch (config.getType()) {
 		case OPAQUE:
-			doc.append("val", ((OpaqueValue) value).getCurr()).append("txid", ((OpaqueValue) value).getCurrTxid())
-					.append("prev", ((OpaqueValue) value).getPrev());
+			doc.append("val", valueToDocument(((OpaqueValue) value).getCurr(), Arrays.asList(config.getValueFields())))
+				.append("txid", ((OpaqueValue) value).getCurrTxid())
+				.append("prev", valueToDocument(((OpaqueValue) value).getPrev(), Arrays.asList(config.getValueFields())));
 			break;
 		case TRANSACTIONAL:
-			doc.append("val", ((TransactionalValue) value).getVal()).append("txid", ((TransactionalValue) value).getTxid());
+			doc.append("val", valueToDocument(((TransactionalValue) value).getVal(), Arrays.asList(config.getValueFields())))
+				.append("txid", ((TransactionalValue) value).getTxid());
 			break;
 		default:
-			doc.append("val", value);
+			doc.append("val", valueToDocument(value, Arrays.asList(config.getValueFields())));
 		}
 		return doc;
+	}
+
+	/**
+	 * converts a value sub-document to a value tuple(list of objects) ordered based on value fields
+	 * if there is a single value field, we return the object itself rather than a singleton list
+	 * 
+	 * @param doc
+	 * @param valueFields
+	 * @return
+	 */
+	private Object documentToValue(final DBObject doc, final List<String> valueFields) {
+		// returns either a single value or a tuple based on the value fields
+		if (valueFields.size() == 1) {
+			return doc.get(valueFields.get(0));
+		} else {
+			return Lists.transform(valueFields, new Function<String, Object>() {
+				@Override
+				public Object apply(final String field) {
+					return doc.get(field);
+				}
+			});
+		}
+	}
+
+	/**
+	 * converts a value to sub-document
+	 * 
+	 * @param value
+	 * @param valueFields
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	private DBObject valueToDocument(final Object value, final List<String> valueFields) {
+		// if there's only one value field, we map the value field name directly to the value
+		// otherwise we take the value field list as key and the value is assumed to be a list of equal length and constuct a map out of it
+		if (valueFields.size() == 1) {
+			return new BasicDBObject(valueFields.get(0), value);
+		} else {
+			final Map<String, Object> valueMap = new HashMap<>();
+			for (int i = 0; i < valueFields.size(); i++) {
+				valueMap.put(valueFields.get(i), ((List<Object>) value).get(i));
+			}
+			return new BasicDBObject(valueMap);
+		}
 	}
 
 	@SuppressWarnings("serial")
@@ -194,7 +246,7 @@ public class MongoState<T> implements IBackingMap<T> {
 		}
 
 		@Override
-		@SuppressWarnings({ "rawtypes", "unchecked" })
+		@SuppressWarnings({"rawtypes","unchecked"})
 		public State makeState(final Map conf, final IMetricsContext context, final int partitionIndex, final int numPartitions) {
 			final CachedMap map = new CachedMap(new MongoState(config), config.getCacheSize());
 			switch (config.getType()) {
