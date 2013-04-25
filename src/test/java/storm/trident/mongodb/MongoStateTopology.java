@@ -7,9 +7,11 @@ import java.util.Random;
 import org.apache.log4j.Logger;
 
 import storm.trident.TridentTopology;
+import storm.trident.fluent.GroupedStream;
 import storm.trident.operation.BaseFilter;
 import storm.trident.operation.CombinerAggregator;
 import storm.trident.operation.TridentCollector;
+import storm.trident.operation.builtin.Sum;
 import storm.trident.spout.IBatchSpout;
 import storm.trident.state.StateType;
 import storm.trident.state.mongodb.MongoState;
@@ -100,6 +102,10 @@ public class MongoStateTopology {
 	 * @param args
 	 */
 	public static void main(final String[] args) {
+		final TridentTopology topology = new TridentTopology();
+		final GroupedStream stream = topology.newStream("test", new RandomTupleSpout()).groupBy(new Fields("a"));
+			// .aggregate(new Fields("b", "c"), new CountSumSum(), new Fields("sum"))
+			// .each(new Fields("a", "sum"), new LoggingFilter());
 		final MongoStateConfig config = new MongoStateConfig();
 		{
 			config.setUrl("mongodb://localhost");
@@ -110,13 +116,21 @@ public class MongoStateTopology {
 			config.setValueFields(new String[]{"count","sumb","sumc"});
 			config.setType(StateType.NON_TRANSACTIONAL);
 			config.setCacheSize(1000);
-
 		}
-		final TridentTopology topology = new TridentTopology();
-		topology.newStream("test", new RandomTupleSpout()).groupBy(new Fields("a"))
-			// .aggregate(new Fields("b", "c"), new CountSumSum(), new Fields("sum"))
-			// .each(new Fields("a", "sum"), new LoggingFilter());
-			.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), new CountSumSum(), new Fields("sum"));
+		stream.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), new CountSumSum(), new Fields("sum"));
+		
+		final MongoStateConfig config1 = new MongoStateConfig();
+		{
+			config1.setUrl("mongodb://localhost");
+			config1.setDb("test");
+			config1.setCollection("state1");
+			config1.setBulkGets(true);
+			config1.setKeyFields(new String[]{"a"});
+			config1.setValueFields(new String[]{"csum"});
+			config1.setType(StateType.NON_TRANSACTIONAL);
+			config1.setCacheSize(1000);
+		}
+		stream.persistentAggregate(MongoState.newFactory(config1), new Fields("c"), new Sum(), new Fields("sum"));
 		final LocalCluster cluster = new LocalCluster();
 		cluster.submitTopology("test", new Config(), topology.build());
 		while (true) {
