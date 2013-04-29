@@ -77,22 +77,24 @@ object TestTopology {
 	def toJavaList[U, T](x: List[U]): java.util.List[T] = seqAsJavaList(x).asInstanceOf[java.util.List[T]]
 
 	def main(args: Array[String]): Unit = {
+		val mongourl = "mongodb://localhost"
+		val db = "test"
 		val topology: TridentTopology = new TridentTopology
 		val stream: GroupedStream = topology.newStream("test", new RandomTupleSpout).each(new Fields("a", "b", "c"), new ThroughputLoggingFilter).groupBy(new Fields("a"))
 		val config: MongoStateConfig =
-			new MongoStateConfig("mongodb://localhost", "test", "state", StateType.NON_TRANSACTIONAL, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
+			new MongoStateConfig(mongourl, db, "state", StateType.NON_TRANSACTIONAL, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
 		stream.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), CountSumSum, new Fields("summary"));
 
 		val configTransactional: MongoStateConfig =
-			new MongoStateConfig("mongodb://localhost", "test", "state_transactional", StateType.TRANSACTIONAL, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
+			new MongoStateConfig(mongourl, db, "state_transactional", StateType.TRANSACTIONAL, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
 		stream.persistentAggregate(MongoState.newFactory(configTransactional), new Fields("b", "c"), CountSumSum, new Fields("summary"));
 
 		val configOpaque: MongoStateConfig =
-			new MongoStateConfig("mongodb://localhost", "test", "state_opaque", StateType.OPAQUE, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
+			new MongoStateConfig(mongourl, db, "state_opaque", StateType.OPAQUE, Array[String]("a"), Array[String]("count", "sumb", "sumc"));
 		stream.persistentAggregate(MongoState.newFactory(configOpaque), new Fields("b", "c"), CountSumSum, new Fields("summary"));
 
 		val conf = new Config
-		conf.setMaxSpoutPending(1)
+		conf.setMaxSpoutPending(10)
 		new LocalCluster().submitTopology("test", conf, topology.build)
 		while (true) {
 		}
