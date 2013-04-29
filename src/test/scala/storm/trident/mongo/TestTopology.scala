@@ -16,6 +16,9 @@ import storm.trident.operation.CombinerAggregator
 import storm.trident.operation.TridentCollector
 import storm.trident.spout.IBatchSpout
 import storm.trident.tuple.TridentTuple
+import storm.trident.state.mongo.MongoState
+import storm.trident.state.mongo.MongoStateConfig
+import storm.trident.state.StateType
 
 object TestTopology {
 
@@ -63,7 +66,19 @@ object TestTopology {
 	def main(args: Array[String]): Unit = {
 		val topology: TridentTopology = new TridentTopology
 		val stream: GroupedStream = topology.newStream("test", new RandomTupleSpout).groupBy(new Fields("a"))
-		stream.aggregate(new Fields("b", "c"), CountSumSum, new Fields("summary")).each(new Fields("a", "summary"), LoggingFilter)
+		val config: MongoStateConfig =
+			new MongoStateConfig("mongodb://localhost", "test", "state", StateType.NON_TRANSACTIONAL, Array[String]("a"), Array[String]("count","sumb","sumc"));
+		stream.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), CountSumSum, new Fields("summary"));
+		
+		val configTransactional: MongoStateConfig =
+			new MongoStateConfig("mongodb://localhost", "test", "state_transactional", StateType.TRANSACTIONAL, Array[String]("a"), Array[String]("count","sumb","sumc"));
+		stream.persistentAggregate(MongoState.newFactory(configTransactional), new Fields("b", "c"), CountSumSum, new Fields("summary"));
+		
+		val configOpaque: MongoStateConfig =
+			new MongoStateConfig("mongodb://localhost", "test", "state_opaque", StateType.OPAQUE, Array[String]("a"), Array[String]("count","sumb","sumc"));
+		stream.persistentAggregate(MongoState.newFactory(configOpaque), new Fields("b", "c"), CountSumSum, new Fields("summary"));
+
+		
 		new LocalCluster().submitTopology("test", new Config, topology.build)
 		while (true) {
 		}
