@@ -113,7 +113,7 @@ public class MongoState<T> implements IBackingMap<T> {
 			// perform an upsert
 			collection.update(new BasicDBObject("_id", ids.get(i)), tuplesToDocument(ids.get(i), values.get(i)), true, false);
 		}
-		logger.info(String.format("%1$d keys flushed", keys.size()));
+		logger.debug(String.format("%1$d keys flushed", keys.size()));
 	}
 
 	/**
