@@ -11,7 +11,6 @@ import storm.trident.fluent.GroupedStream;
 import storm.trident.operation.BaseFilter;
 import storm.trident.operation.CombinerAggregator;
 import storm.trident.operation.TridentCollector;
-import storm.trident.operation.builtin.Sum;
 import storm.trident.spout.IBatchSpout;
 import storm.trident.state.StateType;
 import storm.trident.state.mongo.MongoState;
@@ -104,33 +103,19 @@ public class MongoStateTopology {
 	public static void main(final String[] args) {
 		final TridentTopology topology = new TridentTopology();
 		final GroupedStream stream = topology.newStream("test", new RandomTupleSpout()).groupBy(new Fields("a"));
-			// .aggregate(new Fields("b", "c"), new CountSumSum(), new Fields("sum"))
-			// .each(new Fields("a", "sum"), new LoggingFilter());
-		final MongoStateConfig config = new MongoStateConfig();
-		{
-			config.setUrl("mongodb://localhost");
-			config.setDb("test");
-			config.setCollection("state");
-			config.setBulkGets(true);
-			config.setKeyFields(new String[]{"a"});
-			config.setValueFields(new String[]{"count","sumb","sumc"});
-			config.setType(StateType.NON_TRANSACTIONAL);
-			config.setCacheSize(1000);
-		}
-		stream.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), new CountSumSum(), new Fields("sum"));
-		
-		final MongoStateConfig config1 = new MongoStateConfig();
-		{
-			config1.setUrl("mongodb://localhost");
-			config1.setDb("test");
-			config1.setCollection("state1");
-			config1.setBulkGets(true);
-			config1.setKeyFields(new String[]{"a"});
-			config1.setValueFields(new String[]{"csum"});
-			config1.setType(StateType.NON_TRANSACTIONAL);
-			config1.setCacheSize(1000);
-		}
-		stream.persistentAggregate(MongoState.newFactory(config1), new Fields("c"), new Sum(), new Fields("sum"));
+		final MongoStateConfig config =
+			new MongoStateConfig("mongodb://localhost", "test", "state", StateType.NON_TRANSACTIONAL, new String[]{"a"}, new String[]{"count","sumb","sumc"});
+		stream.persistentAggregate(MongoState.newFactory(config), new Fields("b", "c"), new CountSumSum(), new Fields("summary"));
+
+		final MongoStateConfig configTransactional =
+			new MongoStateConfig("mongodb://localhost", "test", "state_transactional", StateType.TRANSACTIONAL, new String[]{"a"}, new String[]{"count","sumb",
+				"sumc"});
+		stream.persistentAggregate(MongoState.newFactory(configTransactional), new Fields("b", "c"), new CountSumSum(), new Fields("summary"));
+
+		final MongoStateConfig configOpaque =
+			new MongoStateConfig("mongodb://localhost", "test", "state_opaque", StateType.OPAQUE, new String[]{"a"}, new String[]{"count","sumb","sumc"});
+		stream.persistentAggregate(MongoState.newFactory(configOpaque), new Fields("b", "c"), new CountSumSum(), new Fields("summary"));
+
 		final LocalCluster cluster = new LocalCluster();
 		cluster.submitTopology("test", new Config(), topology.build());
 		while (true) {

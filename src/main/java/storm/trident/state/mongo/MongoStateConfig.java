@@ -13,10 +13,21 @@ public class MongoStateConfig implements Serializable {
 	private StateType type = StateType.OPAQUE;
 	private String[] keyFields;
 	private String[] valueFields;
-	private boolean bulkGets;
+	private boolean bulkGets = true;
 	private int cacheSize = DEFAULT;
 
 	private static final int DEFAULT = 5000;
+	
+	public MongoStateConfig() {}
+	
+	public MongoStateConfig(final String url, final String db, final String collection, final StateType type, final String[] keyFields, final String[] valueFields) {
+		this.url = url;
+		this.db = db;
+		this.collection = collection;
+		this.type = type;
+		this.keyFields = keyFields;
+		this.valueFields = valueFields;
+	}
 
 	public String getUrl() {
 		return url;

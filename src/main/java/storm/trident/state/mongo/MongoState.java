@@ -231,7 +231,7 @@ public class MongoState<T> implements IBackingMap<T> {
 		} else {
 			final Map<String, Object> valueMap = new HashMap<>();
 			for (int i = 0; i < valueFields.size(); i++) {
-				valueMap.put(valueFields.get(i), ((List<Object>) value).get(i));
+				valueMap.put(valueFields.get(i), value == null?null:((List<Object>) value).get(i));
 			}
 			return new BasicDBObject(valueMap);
 		}
